@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # --- 1. Сервис Приложения (FastAPI + Aiogram) ---
+  app:
+    build:
+      context: .
+      # Используем официальный образ Python
+      dockerfile: Dockerfile
+    container_name: twa_app
+    # Монтируем текущую папку для горячей перезагрузки в режиме разработки
+    volumes:
+      - ./src:/app/src
+    env_file:
+      - .env
+    ports:
+      # Проброс порта: <Хост>:<Контейнер>
+      - "8000:8000"
+    # Запускаем Uvicorn с автоматической перезагрузкой
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      # Приложение зависит от базы данных, но пока это просто для порядка
+      db:
+        condition: service_healthy
+
+  # --- 2. Сервис Базы Данных (PostgreSQL) ---
+  db:
+    image: postgres:16-alpine
+    container_name: twa_db
+    env_file:
+      - .env
+    # Монтируем том для сохранения данных БД между перезапусками
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      # Проброс порта для доступа с хоста (опционально, но полезно)
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+# --- 3. Тома для постоянного хранения данных ---
+volumes:
+  postgres_data:

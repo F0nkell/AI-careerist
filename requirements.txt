@@ -1,0 +1,8 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+
+# Telegram Bot
+aiogram==3.3.0
+python-dotenv
+pydantic-settings
