@@ -47,18 +47,12 @@ app = FastAPI(title="TWA Killer Core API", lifespan=lifespan)
 
 # --- CORS CONFIGURATION (NEW) ---
 # Это критически важно. Мы разрешаем фронтенду (localhost:5173) стучаться к нам.
-origins = [
-    "http://localhost:5173",  # Локальный React
-    "http://127.0.0.1:5173",
-    "https://t.me",           # Telegram Web App (на будущее)
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # <--- ЗВЕЗДОЧКА (Разрешить всем)
     allow_credentials=True,
-    allow_methods=["*"],  # Разрешаем все методы (GET, POST, etc.)
-    allow_headers=["*"],  # Разрешаем все заголовки (Authorization и т.д.)
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- ENDPOINTS ---
