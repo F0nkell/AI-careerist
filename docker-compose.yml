@@ -34,7 +34,7 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       # Проброс порта для доступа с хоста (опционально, но полезно)
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s

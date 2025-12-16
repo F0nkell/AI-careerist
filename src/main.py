@@ -1,106 +1,107 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends # Добавь Depends сюда
-from src.security import get_current_user
-from src.schemas import TelegramUser
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # <--- NEW: Для связи с фронтом
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 
 from src.config import settings
 from src.bot.handlers import router as bot_router
+from src.security import get_current_user
+from src.schemas import TelegramUser
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- AIOGRAM SETUP ---
-# Создаем экземпляр бота и диспетчера
 bot = Bot(token=settings.BOT_TOKEN)
 dp = Dispatcher()
 dp.include_router(bot_router)
 
-# Функция для установки команд бота
 async def set_bot_commands(bot_instance: Bot):
     commands = [
-        BotCommand(command="start", description="Начать работу / Проверить статус"),
-        # Здесь будут другие команды
+        BotCommand(command="start", description="Начать работу"),
     ]
     await bot_instance.set_my_commands(commands)
 
-# --- FASTAPI LIFESPAN (Управление жизненным циклом) ---
+# --- FASTAPI LIFESPAN ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Контекстный менеджер для управления запуском/остановкой Aiogram.
-    FastAPI запускает код в 'startup' и выполняет 'yield',
-    а после остановки - код в 'shutdown'.
-    """
-    logger.info("Application startup: Setting up bot commands and starting polling...")
-    
-    # 1. Устанавливаем команды бота
+    logger.info("Startup: Setting up bot...")
     await set_bot_commands(bot)
-    
-    # 2. Запускаем polling в фоновом режиме
-    # Мы используем asyncio.create_task, чтобы polling не блокировал FastAPI.
     polling_task = asyncio.create_task(dp.start_polling(bot))
-    
-    # FastAPI готов принимать запросы
     yield
-    
-    # --- SHUTDOWN ---
-    logger.info("Application shutdown: Stopping bot polling...")
-    # Отменяем задачу polling'а
+    logger.info("Shutdown: Stopping bot...")
     polling_task.cancel()
     try:
-        await polling_task  # Ждем отмены
+        await polling_task
     except asyncio.exceptions.CancelledError:
-        logger.info("Bot polling successfully stopped.")
-    
-    # Закрываем сессию бота
+        pass
     await bot.session.close()
 
-
 # --- FASTAPI SETUP ---
-# Создаем экземпляр FastAPI с нашим lifespan
-app = FastAPI(
-    title="TWA Killer Core API",
-    version="1.0.0",
-    lifespan=lifespan,
+app = FastAPI(title="TWA Killer Core API", lifespan=lifespan)
+
+# --- CORS CONFIGURATION (NEW) ---
+# Это критически важно. Мы разрешаем фронтенду (localhost:5173) стучаться к нам.
+origins = [
+    "http://localhost:5173",  # Локальный React
+    "http://127.0.0.1:5173",
+    "https://t.me",           # Telegram Web App (на будущее)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем все методы (GET, POST, etc.)
+    allow_headers=["*"],  # Разрешаем все заголовки (Authorization и т.д.)
 )
 
-# Базовый эндпоинт для проверки здоровья (Health Check)
+# --- ENDPOINTS ---
+
 @app.get("/health")
 async def health_check():
-    """Проверка здоровья API."""
-    return {"status": "ok", "service": "Core API", "message": "FastAPI is running and ready."}
+    return {"status": "ok"}
 
-# Дополнительный эндпоинт для проверки статуса бота
 @app.get("/bot_status")
 async def bot_status():
-    """Проверка, что бот авторизован."""
-    try:
-        me = await bot.get_me()
-        return {"status": "ok", "bot_username": me.username, "message": "Aiogram is polling."}
-    except Exception as e:
-        return {"status": "error", "message": f"Bot API error: {e}"}
+    me = await bot.get_me()
+    return {"status": "ok", "bot": me.username}
 
-# Если мы будем использовать Webhooks, мы добавим здесь роут для /webhook
-# Но для начала, Polling - самый простой способ проверки.
-
-# --- SECURE ENDPOINT EXAMPLE ---
 @app.get("/me")
 async def get_my_profile(user: TelegramUser = Depends(get_current_user)):
-    """
-    Защищенный эндпоинт. Доступен ТОЛЬКО если в заголовках передана валидная initData.
-    Возвращает данные пользователя, расшифрованные из Telegram.
-    """
     return {
         "status": "authenticated",
-        "user_id": user.id,
-        "username": user.username,
-        "is_premium": user.is_premium,
-        "message": f"Hello, {user.first_name}! You are authorized."
+        "user": user.dict()
+    }
+
+# --- RESUME UPLOAD ENDPOINT (NEW) ---
+@app.post("/resume/upload")
+async def upload_resume(
+    file: UploadFile = File(...),
+    # Пока закомментируем проверку авторизации, чтобы тебе было легче тестить через Swagger
+    # user: TelegramUser = Depends(get_current_user) 
+):
+    """
+    Принимает PDF файл, проверяет формат и возвращает информацию о нем.
+    В будущем здесь будет запуск AI-анализа.
+    """
+    # 1. Проверка формата
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+    
+    # 2. (Симуляция) Читаем файл (в будущем будем парсить текст)
+    content = await file.read()
+    file_size_kb = len(content) / 1024
+
+    logger.info(f"Received PDF: {file.filename}, Size: {file_size_kb:.2f} KB")
+
+    return {
+        "filename": file.filename,
+        "size_kb": round(file_size_kb, 2),
+        "message": "File received successfully. AI processing will be here."
     }
