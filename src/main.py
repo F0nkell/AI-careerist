@@ -11,6 +11,7 @@ from src.config import settings
 from src.bot.handlers import router as bot_router
 from src.security import get_current_user
 from src.schemas import TelegramUser
+from src.services.interview import process_voice_interview
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -99,3 +100,19 @@ async def upload_resume(
         "size_kb": round(file_size_kb, 2),
         "message": "File received successfully. AI processing will be here."
     }
+
+@app.post("/interview/chat")
+async def interview_chat(
+    file: UploadFile = File(...)
+):
+    """
+    Принимает голосовое сообщение, возвращает ответ ИИ (текст + аудио).
+    """
+    # Валидация (опционально можно проверять mime-type, но webm/mp4/wav whisper ест всё)
+    
+    try:
+        result = await process_voice_interview(file)
+        return result
+    except Exception as e:
+        logger.error(f"Interview error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
