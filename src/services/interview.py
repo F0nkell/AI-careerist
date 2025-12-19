@@ -4,64 +4,78 @@ import uuid
 import asyncio
 from pathlib import Path
 from fastapi import UploadFile
-from groq import AsyncGroq  # Клиент Groq
-from gtts import gTTS       # Бесплатный TTS от Google
+from openai import AsyncOpenAI # OpenRouter совместим с OpenAI клиентом
+import speech_recognition as sr
+from pydub import AudioSegment
+from gtts import gTTS
 
 from src.config import settings
 
-# Инициализация Groq
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+# --- ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ ---
+client = AsyncOpenAI(
+    api_key=settings.OPENROUTER_API_KEY,
+    base_url="https://openrouter.ai/api/v1" # Адрес OpenRouter
+)
+# -------------------------------
 
 TEMP_DIR = Path("temp_audio")
 TEMP_DIR.mkdir(exist_ok=True)
 
 async def process_voice_interview(file: UploadFile) -> dict:
     unique_id = uuid.uuid4().hex
-    input_path = TEMP_DIR / f"{unique_id}_input.m4a" # Groq любит m4a/mp3
+    input_path = TEMP_DIR / f"{unique_id}_raw"
+    wav_path = TEMP_DIR / f"{unique_id}.wav"
     output_path = TEMP_DIR / f"{unique_id}_output.mp3"
 
     try:
-        # 1. Сохраняем файл от юзера
+        # 1. Сохраняем
         content = await file.read()
         with open(input_path, "wb") as f:
             f.write(content)
 
-        # 2. STT (Слух) через Groq (Whisper)
-        with open(input_path, "rb") as audio_file:
-            transcription = await client.audio.transcriptions.create(
-                file=(input_path.name, audio_file.read()),
-                model="whisper-large-v3", # Мощная бесплатная модель
-                response_format="json",
-                language="ru",
-                temperature=0.0
-            )
-        user_text = transcription.text
+        # 2. Конвертируем в WAV (для распознавания)
+        sound = AudioSegment.from_file(input_path)
+        sound.export(wav_path, format="wav")
 
-        # 3. LLM (Мозг) через Groq (Llama 3 или Mixtral)
-        chat_completion = await client.chat.completions.create(
+        # 3. Распознаем речь (Бесплатно через Google)
+        r = sr.Recognizer()
+        with sr.AudioFile(str(wav_path)) as source:
+            audio_data = r.record(source)
+            try:
+                user_text = await asyncio.to_thread(r.recognize_google, audio_data, language="ru-RU")
+            except sr.UnknownValueError:
+                user_text = "..."
+            except sr.RequestError:
+                user_text = "(Ошибка распознавания)"
+
+        print(f"DEBUG: User said: {user_text}")
+
+        # 4. Отправляем в OpenRouter
+        # Используем бесплатную модель (или дешевую)
+        # Варианты: "deepseek/deepseek-chat", "google/gemini-2.0-flash-exp:free"
+        response = await client.chat.completions.create(
+            model="deepseek/deepseek-chat", # <-- Формат имени модели в OpenRouter
             messages=[
-                {
-                    "role": "system",
-                    "content": "Ты строгий HR. Говори кратко, на русском языке. Задавай по одному вопросу."
-                },
-                {
-                    "role": "user",
-                    "content": user_text,
-                }
+                {"role": "system", "content": "Ты строгий HR. Отвечай на русском, кратко (1 предложение)."},
+                {"role": "user", "content": user_text},
             ],
-            model="llama3-8b-8192", # Очень быстрая и умная модель
+            # Дополнительные заголовки, которые просит OpenRouter (для статистики)
+            extra_headers={
+                "HTTP-Referer": "https://t.me/YourBot", 
+                "X-Title": "ResumeKillerApp",
+            }
         )
-        ai_text = chat_completion.choices[0].message.content
+        ai_text = response.choices[0].message.content
+        print(f"DEBUG: AI said: {ai_text}")
 
-        # 4. TTS (Голос) через gTTS (Google)
-        # gTTS синхронная, поэтому запускаем её в отдельном потоке, чтобы не блокировать сервер
+        # 5. Озвучка (TTS)
         def save_tts():
             tts = gTTS(text=ai_text, lang='ru')
             tts.save(str(output_path))
         
         await asyncio.to_thread(save_tts)
 
-        # 5. Кодируем в Base64
+        # 6. Base64
         with open(output_path, "rb") as audio_file:
             audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
 
@@ -72,19 +86,16 @@ async def process_voice_interview(file: UploadFile) -> dict:
         }
 
     except Exception as e:
-        print(f"Error: {e}")
-        # Возвращаем заглушку при ошибке, чтобы фронт не падал
+        print(f"OpenRouter Error: {e}")
+        # Возвращаем ошибку текстом, чтобы видеть в Swagger
         return {
-            "user_text": "Ошибка обработки",
-            "ai_text": f"Произошла ошибка на сервере: {str(e)}",
+            "user_text": "Ошибка",
+            "ai_text": f"API Error: {str(e)}",
             "audio_base64": ""
         }
 
     finally:
-        # Чистим файлы
-        if input_path.exists():
-            try: os.remove(input_path)
-            except: pass
-        if output_path.exists():
-            try: os.remove(output_path)
-            except: pass
+        for p in [input_path, wav_path, output_path]:
+            if p.exists():
+                try: os.remove(p)
+                except: pass

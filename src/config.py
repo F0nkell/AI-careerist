@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int
     
     # Заменили OpenAI на Groq
-    GROQ_API_KEY: str
+    OPENROUTER_API_KEY: str
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
