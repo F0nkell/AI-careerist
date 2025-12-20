@@ -37,7 +37,7 @@ export const Resume = () => {
 
     try {
       // Важно: стучимся на localhost, поэтому тестируй с ПК
-      const response = await fetch('http://localhost:8000/resume/upload', {
+      const response = await fetch('/api/resume/upload', {
         method: 'POST',
         body: formData,
       });

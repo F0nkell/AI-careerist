@@ -5,9 +5,15 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Разрешаем доступ по локальной сети
-    host: true, 
-    // Разрешаем любые внешние адреса (туннели)
-    allowedHosts: true 
+    host: true,
+    allowedHosts: true,
+    // Проксирование для локальной разработки
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000', // Бэкенд
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '') // Убираем /api при пересылке
+      }
+    }
   }
 })

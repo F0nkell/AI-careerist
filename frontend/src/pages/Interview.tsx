@@ -34,7 +34,7 @@ export const Interview = () => {
     try {
       // 2. Отправляем на бэкенд
       // Используем localhost, так как ты тестируешь с ПК
-      const response = await fetch('http://localhost:8000/interview/chat', {
+      const response = await fetch('/api/interview/chat', {
         method: 'POST',
         body: formData,
       });
