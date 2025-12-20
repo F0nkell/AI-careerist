@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  # --- 1. NGINX (Главный вход) ---
+  # --- 1. NGINX (Входная дверь) ---
   nginx:
     image: nginx:alpine
     container_name: twa_nginx
     ports:
-      - "80:80" # Теперь мы заходим через порт 80 (стандартный для веба)
+      - "80:80" # Единственный открытый порт
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
@@ -25,29 +25,17 @@ services:
       - ./alembic.ini:/app/alembic.ini
     env_file:
       - .env
-    # ports: - "8000:8000" <--- УБИРАЕМ! Доступ только через Nginx
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-    depends_on:
-      db:
-        condition: service_healthy
+    # Порт 8000 больше не нужен наружу, Nginx общается с ним внутри сети Docker
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
 
-  # --- 3. Frontend (React) ---
+  # --- 3. Frontend (React Production Build) ---
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: twa_frontend
-    volumes:
-      - ./frontend/src:/app/src # Чтобы изменения кода видны были сразу
-    # ports: - "5173:80" <--- УБИРАЕМ! Доступ только через Nginx
-    # В Dockerfile фронтенда у нас nginx слушает 80, так что тут ок.
-    # Но для dev-режима нам нужно запускать npm run dev.
-    # В ПРОДАКШЕНЕ используется nginx внутри frontend контейнера.
-    # В РАЗРАБОТКЕ мы переопределим команду:
-    command: npm run dev -- --host
-    environment:
-      - CHOKIDAR_USEPOLLING=true # Фикс для Windows (обновление файлов)
-
+    # Здесь нет volumes и command, так как мы используем собранную статику (dist)
+    
   # --- 4. Database ---
   db:
     image: postgres:16-alpine
@@ -57,7 +45,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
-      - "5433:5432"
+      - "5433:5432" # Оставляем для удобства администрирования через DBeaver
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
