@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useReactMediaRecorder } from 'react-media-recorder';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, ArrowLeft, Loader2, Volume2, User, Bot } from 'lucide-react';
+import { Mic, Square, ArrowLeft, Loader2, Volume2, Bot } from 'lucide-react';
 
 interface ChatMessage {
   role: 'user' | 'ai';
@@ -26,14 +26,11 @@ export const Interview = () => {
     
     setIsProcessing(true);
     
-    // 1. Создаем форму для отправки
     const formData = new FormData();
-    // Важно: добавляем имя файла с расширением, чтобы бэкенд понял формат
     formData.append('file', blob, 'voice.wav'); 
 
     try {
-      // 2. Отправляем на бэкенд
-      // Используем localhost, так как ты тестируешь с ПК
+      // Используем относительный путь для Nginx
       const response = await fetch('/api/interview/chat', {
         method: 'POST',
         body: formData,
@@ -43,14 +40,12 @@ export const Interview = () => {
 
       const data = await response.json();
 
-      // 3. Добавляем сообщения в чат
       setMessages(prev => [
         ...prev, 
         { role: 'user', text: data.user_text || "..." },
         { role: 'ai', text: data.ai_text }
       ]);
 
-      // 4. Воспроизводим аудио
       if (data.audio_base64) {
         const audio = new Audio(`data:audio/mp3;base64,${data.audio_base64}`);
         audio.play().catch(e => console.log("Auto-play blocked:", e));
@@ -67,10 +62,19 @@ export const Interview = () => {
   // Хук записи звука
   const { status, startRecording, stopRecording } = useReactMediaRecorder({ 
     audio: true,
-    onStop: handleStop // Эта функция сработает, когда отпустишь кнопку
+    onStop: handleStop
   });
 
   const isRecording = status === 'recording';
+
+  // Логика переключения (Нажал -> Старт / Нажал -> Стоп)
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-bg text-text">
@@ -81,7 +85,7 @@ export const Interview = () => {
         </button>
         <div className="ml-2">
           <h1 className="font-bold text-lg">AI Interviewer</h1>
-          <p className="text-xs text-hint">DeepSeek + Google Speech</p>
+          <p className="text-xs text-hint">Нажми для записи</p>
         </div>
       </div>
 
@@ -90,7 +94,8 @@ export const Interview = () => {
         {messages.length === 0 && (
           <div className="text-center text-hint mt-10 opacity-60">
             <Bot size={48} className="mx-auto mb-4" />
-            <p>Нажми и удерживай микрофон,<br/>чтобы начать собеседование.</p>
+            <p>Нажми на кнопку,<br/>чтобы начать говорить.</p>
+            <p className="text-xs mt-2">(Повторное нажатие отправит сообщение)</p>
           </div>
         )}
 
@@ -110,7 +115,7 @@ export const Interview = () => {
           </div>
         ))}
 
-        {/* Индикатор "ИИ думает" */}
+        {/* Индикатор обработки */}
         {isProcessing && (
           <div className="flex justify-start">
             <div className="bg-secondaryBg p-3 rounded-2xl rounded-bl-none flex items-center space-x-2">
@@ -125,11 +130,8 @@ export const Interview = () => {
       {/* Подвал с кнопкой */}
       <div className="p-6 pb-8 flex justify-center bg-gradient-to-t from-bg via-bg to-transparent">
         <button
-          onMouseDown={startRecording}
-          onMouseUp={stopRecording}
-          onTouchStart={startRecording} // Для мобилок
-          onTouchEnd={stopRecording}    // Для мобилок
-          className="relative group outline-none select-none touch-none"
+          onClick={toggleRecording} // Теперь просто клик
+          className="relative group outline-none select-none"
           disabled={isProcessing}
         >
           {/* Анимация пульсации */}
@@ -137,9 +139,9 @@ export const Interview = () => {
             {isRecording && (
               <motion.div
                 initial={{ scale: 1, opacity: 0.5 }}
-                animate={{ scale: 1.5, opacity: 0 }}
+                animate={{ scale: 1.6, opacity: 0 }}
                 exit={{ scale: 1, opacity: 0 }}
-                transition={{ repeat: Infinity, duration: 1 }}
+                transition={{ repeat: Infinity, duration: 1.5 }}
                 className="absolute inset-0 bg-red-500 rounded-full"
               />
             )}
@@ -153,7 +155,12 @@ export const Interview = () => {
               ${isProcessing ? 'opacity-50 cursor-not-allowed grayscale' : ''}
             `}
           >
-            <Mic size={32} className="text-white" />
+            {/* Меняем иконку: Микрофон или Стоп (Квадрат) */}
+            {isRecording ? (
+                <Square size={28} className="text-white fill-current" />
+            ) : (
+                <Mic size={32} className="text-white" />
+            )}
           </div>
         </button>
       </div>
