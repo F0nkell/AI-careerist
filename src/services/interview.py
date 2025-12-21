@@ -1,7 +1,9 @@
 import os
 import base64
 import uuid
+import json
 import asyncio
+from typing import List
 from pathlib import Path
 from fastapi import UploadFile
 from openai import AsyncOpenAI
@@ -11,7 +13,6 @@ from gtts import gTTS
 
 from src.config import settings
 
-# Клиент OpenRouter
 client = AsyncOpenAI(
     api_key=settings.OPENROUTER_API_KEY,
     base_url="https://openrouter.ai/api/v1"
@@ -19,44 +20,41 @@ client = AsyncOpenAI(
 
 TEMP_DIR = Path("temp_audio")
 TEMP_DIR.mkdir(exist_ok=True)
-
-# Путь к файлу с инструкцией
 PROMPT_PATH = Path("src/prompts/interview_master.txt")
 
 def load_system_prompt():
-    """Читает инструкцию из файла. Если файла нет, берет дефолт."""
     if PROMPT_PATH.exists():
         return PROMPT_PATH.read_text(encoding="utf-8")
-    return "Ты строгий интервьюер. Отвечай кратко."
+    return "Ты строгий интервьюер."
 
-async def process_voice_interview(file: UploadFile) -> dict:
+# --- ОБНОВЛЕННАЯ СИГНАТУРА ФУНКЦИИ ---
+async def process_voice_interview(file: UploadFile, history_json: str) -> dict:
     unique_id = uuid.uuid4().hex
     input_path = TEMP_DIR / f"{unique_id}.webm"
     wav_path = TEMP_DIR / f"{unique_id}.wav"
     output_path = TEMP_DIR / f"{unique_id}_output.mp3"
 
     try:
-        # 1. Читаем и валидируем файл
+        # 1. Парсим историю (Приходит как строка JSON)
+        try:
+            history = json.loads(history_json)
+        except:
+            history = []
+
+        # 2. Обработка аудио
         content = await file.read()
         if len(content) < 1024:
-            return {
-                "user_text": "...",
-                "ai_text": "Слишком короткое сообщение. Нажмите и удерживайте кнопку.",
-                "audio_base64": ""
-            }
+            return {"user_text": "...", "ai_text": "Говорите громче.", "audio_base64": ""}
 
         with open(input_path, "wb") as f:
             f.write(content)
 
-        # 2. Конвертация (WebM -> WAV)
         try:
             sound = AudioSegment.from_file(input_path)
             sound.export(wav_path, format="wav")
-        except Exception as e:
-            print(f"FFmpeg Error: {e}")
-            return {"user_text": "Ошибка аудио", "ai_text": "Не удалось прочитать файл.", "audio_base64": ""}
+        except Exception:
+            return {"user_text": "Error", "ai_text": "Ошибка аудио.", "audio_base64": ""}
 
-        # 3. Распознавание (STT)
         r = sr.Recognizer()
         with sr.AudioFile(str(wav_path)) as source:
             r.adjust_for_ambient_noise(source, duration=0.5)
@@ -69,18 +67,25 @@ async def process_voice_interview(file: UploadFile) -> dict:
         print(f"DEBUG: User said: {user_text}")
 
         if not user_text or user_text == "...":
-             return {"user_text": "...", "ai_text": "Я вас не слышу. Повторите.", "audio_base64": ""}
+             return {"user_text": "...", "ai_text": "Повторите, я не расслышал.", "audio_base64": ""}
 
-        # 4. Мозг (DeepSeek + System Prompt из файла)
-        # Загружаем актуальную инструкцию
+        # 3. СБОРКА КОНТЕКСТА (System + History + User)
         system_instruction = load_system_prompt()
         
+        # Формируем полный список сообщений для ИИ
+        messages_payload = [{"role": "system", "content": system_instruction}]
+        
+        # Добавляем историю (последние 10 сообщений)
+        # Важно: history приходит в формате [{role: "user", content: "..."}, ...]
+        messages_payload.extend(history)
+        
+        # Добавляем текущий вопрос
+        messages_payload.append({"role": "user", "content": user_text})
+
+        # 4. Запрос к DeepSeek
         response = await client.chat.completions.create(
             model="deepseek/deepseek-chat",
-            messages=[
-                {"role": "system", "content": system_instruction}, # <--- ВОТ ОНА
-                {"role": "user", "content": user_text},
-            ],
+            messages=messages_payload,
             extra_headers={
                 "HTTP-Referer": "https://t.me/ResumeKillerBot", 
                 "X-Title": "ResumeKiller",
@@ -89,14 +94,13 @@ async def process_voice_interview(file: UploadFile) -> dict:
         ai_text = response.choices[0].message.content
         print(f"DEBUG: AI said: {ai_text}")
 
-        # 5. Озвучка (TTS)
+        # 5. Озвучка
         def save_tts():
             tts = gTTS(text=ai_text, lang='ru')
             tts.save(str(output_path))
         
         await asyncio.to_thread(save_tts)
 
-        # 6. Base64
         with open(output_path, "rb") as audio_file:
             audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
 
@@ -108,7 +112,7 @@ async def process_voice_interview(file: UploadFile) -> dict:
 
     except Exception as e:
         print(f"Global Error: {e}")
-        return {"user_text": "Ошибка", "ai_text": "Ошибка сервера.", "audio_base64": ""}
+        return {"user_text": "Error", "ai_text": "Ошибка сервера.", "audio_base64": ""}
 
     finally:
         for p in [input_path, wav_path, output_path]:

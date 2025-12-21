@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware  # <--- NEW: Для связи с фронтом
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
@@ -103,15 +103,14 @@ async def upload_resume(
 
 @app.post("/interview/chat")
 async def interview_chat(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    history: str = Form("[]") # <--- Новое поле, по умолчанию пустой список JSON
 ):
     """
-    Принимает голосовое сообщение, возвращает ответ ИИ (текст + аудио).
+    Принимает голос + историю чата.
     """
-    # Валидация (опционально можно проверять mime-type, но webm/mp4/wav whisper ест всё)
-    
     try:
-        result = await process_voice_interview(file)
+        result = await process_voice_interview(file, history)
         return result
     except Exception as e:
         logger.error(f"Interview error: {e}")

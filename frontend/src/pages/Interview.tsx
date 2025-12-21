@@ -27,10 +27,20 @@ export const Interview = () => {
     setIsProcessing(true);
     
     const formData = new FormData();
-    formData.append('file', blob, 'voice.wav'); 
+    formData.append('file', blob, 'voice.wav');
+    
+    // --- ПАМЯТЬ: Формируем историю ---
+    // Берем последние 10 сообщений
+    const historyPayload = messages.slice(-10).map(msg => ({
+      role: msg.role === 'ai' ? 'assistant' : 'user', // DeepSeek ждет 'assistant', а у нас 'ai'
+      content: msg.text
+    }));
+    
+    // Добавляем историю как строку JSON
+    formData.append('history', JSON.stringify(historyPayload));
+    // ---------------------------------
 
     try {
-      // Используем относительный путь для Nginx
       const response = await fetch('/api/interview/chat', {
         method: 'POST',
         body: formData,
@@ -53,7 +63,7 @@ export const Interview = () => {
 
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'ai', text: "Ошибка связи с сервером. Попробуй еще раз." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "Ошибка связи. Попробуй еще раз." }]);
     } finally {
       setIsProcessing(false);
     }
