@@ -104,13 +104,15 @@ async def upload_resume(
 @app.post("/interview/chat")
 async def interview_chat(
     file: UploadFile = File(...),
-    history: str = Form("[]") # <--- Новое поле, по умолчанию пустой список JSON
+    image: UploadFile = File(None), # <--- Новое поле (необязательное)
+    history: str = Form("[]")
 ):
     """
-    Принимает голос + историю чата.
+    Принимает голос + историю + (опционально) картинку.
     """
     try:
-        result = await process_voice_interview(file, history)
+        # Передаем image в сервис
+        result = await process_voice_interview(file, history, image)
         return result
     except Exception as e:
         logger.error(f"Interview error: {e}")

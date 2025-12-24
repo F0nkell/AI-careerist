@@ -3,20 +3,27 @@ import base64
 import uuid
 import json
 import asyncio
+import re
 import random
-from typing import List
+from typing import List, Optional
 from pathlib import Path
 from fastapi import UploadFile
 from openai import AsyncOpenAI
-import speech_recognition as sr
+import speech_recognition as sr  # Google SR (Бесплатно)
 from pydub import AudioSegment
-from gtts import gTTS
+import edge_tts 
 from sqlalchemy import select, func
 
 from src.config import settings
 from src.database import AsyncSessionLocal
 from src.models.question import Question
 
+# --- НАСТРОЙКИ ---
+# Используем Qwen VL (Vision Language) - он видит картинки
+MODEL_NAME = "meta-llama/llama-3.2-90b-vision-instruct:free"
+VOICE_NAME = "ru-RU-DmitryNeural"
+
+# Клиент OpenRouter
 client = AsyncOpenAI(
     api_key=settings.OPENROUTER_API_KEY,
     base_url="https://openrouter.ai/api/v1"
@@ -30,6 +37,17 @@ def load_system_prompt():
     if PROMPT_PATH.exists():
         return PROMPT_PATH.read_text(encoding="utf-8")
     return "Ты строгий интервьюер."
+
+def clean_text_for_speech(text: str) -> str:
+    """
+    Удаляет *действия*, (пояснения) и Markdown перед озвучкой.
+    """
+    cleaned = re.sub(r'\*.*?\*', '', text) 
+    cleaned = re.sub(r'\(.*?\)', '', cleaned)
+    cleaned = re.sub(r'```.*?```', 'код пропущен', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'`.*?`', '', cleaned) 
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
 
 # --- RAG: Поиск вопросов в базе ---
 async def get_rag_context(user_text: str) -> str:
@@ -51,7 +69,7 @@ async def get_rag_context(user_text: str) -> str:
     elif "sql" in text or "базы данных" in text:
         category = "sql"
     
-    # Новые профессии (Custom JSON)
+    # Новые профессии
     elif "маркетолог" in text or "реклама" in text or "marketing" in text:
         category = "marketers"
     elif "врач" in text or "медик" in text or "доктор" in text or "медицина" in text:
@@ -84,83 +102,106 @@ async def get_rag_context(user_text: str) -> str:
             print(f"DEBUG: No questions found for category '{category}'")
             return ""
             
-        # Формируем текст шпаргалки С ПРИНУЖДЕНИЕМ К РУССКОМУ
+        # Формируем текст шпаргалки
         rag_text = f"\n\n[RAG - РЕКОМЕНДОВАННЫЕ ВОПРОСЫ ИЗ БАЗЫ]:\n"
         for i, q in enumerate(questions, 1):
             rag_text += f"{i}. {q}\n"
         
-        # <--- ДОБАВЛЯЕМ ЭТУ СТРОКУ --->
         rag_text += "\n[ВАЖНО: Если вопросы выше на английском — ПЕРЕВЕДИ их и задавай ИСКЛЮЧИТЕЛЬНО НА РУССКОМ ЯЗЫКЕ!]\n"
         
         return rag_text
 
-async def process_voice_interview(file: UploadFile, history_json: str) -> dict:
+async def process_voice_interview(file: UploadFile, history_json: str, image: Optional[UploadFile] = None) -> dict:
     unique_id = uuid.uuid4().hex
     input_path = TEMP_DIR / f"{unique_id}.webm"
-    wav_path = TEMP_DIR / f"{unique_id}.wav"
+    wav_path = TEMP_DIR / f"{unique_id}.wav" # WAV нужен для Google Speech
     output_path = TEMP_DIR / f"{unique_id}_output.mp3"
 
     try:
-        try:
-            history = json.loads(history_json)
-        except:
-            history = []
-
+        # 1. Обработка аудио (User Voice)
         content = await file.read()
         if len(content) < 1024:
             return {"user_text": "...", "ai_text": "Говорите громче.", "audio_base64": ""}
+        with open(input_path, "wb") as f: f.write(content)
 
-        with open(input_path, "wb") as f:
-            f.write(content)
-
+        # Конвертация WebM -> WAV (для Google SR)
         try:
             sound = AudioSegment.from_file(input_path)
             sound.export(wav_path, format="wav")
-        except:
-            return {"user_text": "Error", "ai_text": "Ошибка аудио.", "audio_base64": ""}
+        except Exception as e:
+            print(f"FFmpeg Error: {e}")
+            return {"user_text": "Ошибка", "ai_text": "Проблема с аудиофайлом.", "audio_base64": ""}
 
+        # 2. STT: Google Speech Recognition (Бесплатно, без ключа)
+        print("DEBUG: Sending audio to Google Speech...")
         r = sr.Recognizer()
         with sr.AudioFile(str(wav_path)) as source:
             r.adjust_for_ambient_noise(source, duration=0.5)
             audio_data = r.record(source)
             try:
                 user_text = await asyncio.to_thread(r.recognize_google, audio_data, language="ru-RU")
-            except:
+            except sr.UnknownValueError:
                 user_text = "..."
-
+            except sr.RequestError:
+                user_text = "(Ошибка сервиса Google)"
+        
         print(f"DEBUG: User said: {user_text}")
 
-        if not user_text or user_text == "...":
-             return {"user_text": "...", "ai_text": "Повторите.", "audio_base64": ""}
-
-        # --- СБОРКА ПРОМПТА С RAG ---
-        base_instruction = load_system_prompt()
-        rag_context = await get_rag_context(user_text) # Ищем вопросы в базе
+        # 3. Подготовка контекста (RAG + History)
+        try: history = json.loads(history_json)
+        except: history = []
         
-        full_system_prompt = base_instruction + rag_context
+        system_instruction = load_system_prompt()
         
-        print(f"DEBUG: RAG Context added: {len(rag_context)} chars")
+        # Если юзер что-то сказал, ищем контекст в базе
+        if user_text and user_text != "..." and user_text != "(Ошибка сервиса Google)":
+            rag_context = await get_rag_context(user_text) 
+            full_system = system_instruction + rag_context
+        else:
+            full_system = system_instruction
 
-        messages_payload = [{"role": "system", "content": full_system_prompt}]
-        messages_payload.extend(history)
-        messages_payload.append({"role": "user", "content": user_text})
+        messages = [{"role": "system", "content": full_system}]
+        messages.extend(history)
 
+        # 4. Формирование сообщения пользователя (Текст + Картинка)
+        user_content = []
+        text_payload = user_text if (user_text and user_text != "...") else "Я молчал или был шум."
+        user_content.append({"type": "text", "text": text_payload})
+
+        if image:
+            print(f"DEBUG: Processing image: {image.filename}")
+            image_data = await image.read()
+            base64_image = base64.b64encode(image_data).decode('utf-8')
+            image_url = f"data:{image.content_type};base64,{base64_image}"
+            
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": image_url}
+            })
+
+        messages.append({"role": "user", "content": user_content})
+
+        # 5. Запрос в Qwen (Vision)
+        print(f"DEBUG: Sending to Qwen ({MODEL_NAME})...")
         response = await client.chat.completions.create(
-            model="deepseek/deepseek-chat",
-            messages=messages_payload,
+            model=MODEL_NAME,
+            messages=messages,
             extra_headers={"HTTP-Referer": "https://t.me/ResumeKillerBot", "X-Title": "ResumeKiller"}
         )
         ai_text = response.choices[0].message.content
         print(f"DEBUG: AI said: {ai_text}")
 
-        def save_tts():
-            tts = gTTS(text=ai_text, lang='ru')
-            tts.save(str(output_path))
+        # 6. Озвучка (Edge TTS)
+        speech_text = clean_text_for_speech(ai_text)
+        if speech_text:
+            communicate = edge_tts.Communicate(speech_text, VOICE_NAME)
+            await communicate.save(str(output_path))
         
-        await asyncio.to_thread(save_tts)
-
-        with open(output_path, "rb") as audio_file:
-            audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
+        if output_path.exists():
+            with open(output_path, "rb") as audio_file:
+                audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
+        else:
+            audio_base64 = ""
 
         return {
             "user_text": user_text,
@@ -170,7 +211,7 @@ async def process_voice_interview(file: UploadFile, history_json: str) -> dict:
 
     except Exception as e:
         print(f"Global Error: {e}")
-        return {"user_text": "Error", "ai_text": "Ошибка сервера.", "audio_base64": ""}
+        return {"user_text": "Error", "ai_text": f"Ошибка: {str(e)}", "audio_base64": ""}
 
     finally:
         for p in [input_path, wav_path, output_path]:

@@ -10,6 +10,6 @@ greenlet
 python-multipart
 aiofiles
 openai          # Клиент для DeepSeek
-gTTS            # Голос
+edge-tts
 SpeechRecognition # Распознавание речи (бесплатно)
 pydub           # Конвертация аудио (требует ffmpeg)
