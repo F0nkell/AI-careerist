@@ -10,9 +10,8 @@ export default defineConfig({
     // Проксирование для локальной разработки
     proxy: {
       '/api': {
-        target: 'http://localhost:8000', // Бэкенд
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '') // Убираем /api при пересылке
+        target: 'http://localhost:80', // Бэкенд
+        changeOrigin: true
       }
     }
   }

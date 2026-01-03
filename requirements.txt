@@ -9,7 +9,7 @@ asyncpg==0.29.0
 greenlet
 python-multipart
 aiofiles
-openai          # Клиент для DeepSeek
-edge-tts
-SpeechRecognition # Распознавание речи (бесплатно)
-pydub           # Конвертация аудио (требует ffmpeg)
+openai             # Для VseGPT
+edge-tts           # Качественный голос
+SpeechRecognition  # Слух
+pydub              # Конвертация аудио
