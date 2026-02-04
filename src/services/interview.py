@@ -26,7 +26,7 @@ VOICE_NAME = "ru-RU-DmitryNeural" # Строгий мужской голос
 # Клиент VseGPT
 client = AsyncOpenAI(
     api_key=settings.OPENROUTER_API_KEY, # Используем старое имя переменной, но ключ VseGPT
-    base_url="https://api.vsegpt.ru/v1"
+    base_url="OPENROUTER_API_KEY"
 )
 
 TEMP_DIR = Path("temp_audio")
