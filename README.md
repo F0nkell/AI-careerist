@@ -115,5 +115,5 @@ docker compose exec app python import_custom.py # Твои JSON паки
 <br>Tech: Подготовлен к интеграции Telegram Stars.
 <div align="center">
 [ Star this Repo ⭐ ] если хочешь пройти собес с первого раза!
-Designed & Engineered by [Твое Имя] & AI Architect
+Designed & Engineered by @F0nekll & AI Architect
 </div>
