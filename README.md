@@ -113,6 +113,7 @@ docker compose exec app python import_custom.py # Твои JSON паки
 <br>Freemium модель: Бесплатный разбор ошибок, платное исправление.
 <br>Subscription: Подписка на безлимитные мок-интервью.
 <br>Tech: Подготовлен к интеграции Telegram Stars.
+<br><br>
 <div align="center">
 [ Star this Repo ⭐ ] если хочешь пройти собес с первого раза!
 Designed & Engineered by @F0nekll & AI Architect
