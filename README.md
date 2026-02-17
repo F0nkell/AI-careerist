@@ -107,8 +107,8 @@ docker compose up --build -d
 docker compose exec app python parse_github.py  # Вопросы с GitHub
 docker compose exec app python import_custom.py # Твои JSON паки
 ```
-
-### 💎 Монетизация (Business Logic)
+---
+## 💎 Монетизация (Business Logic)
 <br>Проект готов к заработку денег:
 <br>Freemium модель: Бесплатный разбор ошибок, платное исправление.
 <br>Subscription: Подписка на безлимитные мок-интервью.
