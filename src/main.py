@@ -44,7 +44,11 @@ async def lifespan(app: FastAPI):
     await bot.session.close()
 
 # --- FASTAPI SETUP ---
-app = FastAPI(title="TWA Killer Core API", lifespan=lifespan)
+app = FastAPI(
+    title="TWA Killer Core API", 
+    lifespan=lifespan,
+    root_path="/api"  # Указываем, что мы сидим за прокси Nginx с префиксом /api
+)
 
 # --- CORS CONFIGURATION (NEW) ---
 # Это критически важно. Мы разрешаем фронтенду (localhost:5173) стучаться к нам.
