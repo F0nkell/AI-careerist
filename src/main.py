@@ -12,6 +12,7 @@ from src.bot.handlers import router as bot_router
 from src.security import get_current_user
 from src.schemas import TelegramUser
 from src.services.interview import process_voice_interview
+from src.services.resume import process_resume_ai
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -78,7 +79,6 @@ async def get_my_profile(user: TelegramUser = Depends(get_current_user)):
         "user": user.dict()
     }
 
-# --- RESUME UPLOAD ENDPOINT (NEW) ---
 @app.post("/resume/upload")
 async def upload_resume(
     file: UploadFile = File(...),
@@ -86,23 +86,26 @@ async def upload_resume(
     # user: TelegramUser = Depends(get_current_user) 
 ):
     """
-    Принимает PDF файл, проверяет формат и возвращает информацию о нем.
-    В будущем здесь будет запуск AI-анализа.
+    Принимает PDF файл, проверяет формат и возвращает информацию о нем + разбор от ИИ.
     """
     # 1. Проверка формата
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
-    # 2. (Симуляция) Читаем файл (в будущем будем парсить текст)
+    # Читаем файл
     content = await file.read()
     file_size_kb = len(content) / 1024
 
     logger.info(f"Received PDF: {file.filename}, Size: {file_size_kb:.2f} KB")
 
+    # 3. Отправляем в ИИ
+    ai_response = await process_resume_ai(file, content)
+
     return {
         "filename": file.filename,
         "size_kb": round(file_size_kb, 2),
-        "message": "File received successfully. AI processing will be here."
+        "message": "Анализ завершен",
+        "ai_response": ai_response
     }
 
 @app.post("/interview/chat")

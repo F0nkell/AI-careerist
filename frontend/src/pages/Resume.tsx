@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
 
@@ -7,7 +7,30 @@ interface UploadResponse {
   filename: string;
   size_kb: number;
   message: string;
+  ai_response?: string;
 }
+
+const Typewriter = ({ text, speed = 15 }: { text: string; speed?: number }) => {
+  const [displayedText, setDisplayedText] = useState('');
+
+  useEffect(() => {
+    let index = 0;
+    let currentText = '';
+    const timer = setInterval(() => {
+      if (index < text.length) {
+        currentText += text.charAt(index);
+        setDisplayedText(currentText);
+        index++;
+      } else {
+        clearInterval(timer);
+      }
+    }, speed);
+
+    return () => clearInterval(timer);
+  }, [text, speed]);
+
+  return <div className="whitespace-pre-wrap text-left text-sm leading-relaxed">{displayedText}</div>;
+};
 
 export const Resume = () => {
   const navigate = useNavigate();
@@ -109,23 +132,35 @@ export const Resume = () => {
 
         {/* Блок: Успех */}
         {status === 'success' && result && (
-          <div className="w-full max-w-sm bg-secondaryBg p-6 rounded-2xl text-center space-y-4 animate-in fade-in zoom-in duration-300">
-            <div className="mx-auto w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/30">
+          <div className="w-full max-w-lg bg-secondaryBg p-6 rounded-2xl text-center space-y-4 animate-in fade-in zoom-in duration-300">
+            <div className="mx-auto w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
               <CheckCircle size={32} />
             </div>
             <div>
-              <h3 className="text-lg font-bold">Анализ завершен!</h3>
-              <p className="text-hint text-sm mt-1">{result.message}</p>
+              <h3 className="text-lg font-bold">Анализ завершен</h3>
             </div>
-            <div className="bg-bg p-3 rounded-lg text-sm text-left border border-hint/10">
-              <p>📄 <b>Файл:</b> {result.filename}</p>
-              <p>⚖️ <b>Размер:</b> {result.size_kb} KB</p>
-            </div>
+            
+            {result.ai_response && (
+              <div className="bg-bg p-4 rounded-xl border border-hint/10 shadow-inner mt-4 relative">
+                <p className="text-xs text-hint mb-2 text-left font-mono border-b border-hint/10 pb-2">>_ Senior_Review.log</p>
+                <div className="font-mono text-text">
+                  <Typewriter text={result.ai_response} speed={10} />
+                </div>
+              </div>
+            )}
+            
+            {!result.ai_response && (
+              <div className="bg-bg p-3 rounded-lg text-sm text-left border border-hint/10">
+                <p>📄 <b>Файл:</b> {result.filename}</p>
+                <p>⚖️ <b>Размер:</b> {result.size_kb} KB</p>
+              </div>
+            )}
+
             <button 
               onClick={() => { setStatus('idle'); setFile(null); }}
-              className="w-full py-3 bg-button text-buttonText rounded-xl font-semibold active:scale-95 transition-transform"
+              className="w-full py-3 bg-button text-buttonText rounded-xl font-semibold active:scale-95 transition-transform mt-4"
             >
-              Загрузить другой
+              Скормить другое резюме
             </button>
           </div>
         )}
