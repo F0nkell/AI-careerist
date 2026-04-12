@@ -4,16 +4,30 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Montserrat', 'sans-serif'],
+      },
       colors: {
-        bg: "var(--tg-theme-bg-color, #ffffff)",
-        text: "var(--tg-theme-text-color, #000000)",
-        hint: "var(--tg-theme-hint-color, #999999)",
-        link: "var(--tg-theme-link-color, #2481cc)",
-        button: "var(--tg-theme-button-color, #2481cc)",
-        buttonText: "var(--tg-theme-button-text-color, #ffffff)",
-        secondaryBg: "var(--tg-theme-secondary-bg-color, #efeff3)",
+        gold: {
+          50: '#fff9eb',
+          100: '#fdf0c8',
+          200: '#fbe090',
+          300: '#f7ca54',
+          400: '#f3b022',
+          500: '#ea910f',
+          600: '#cc6e0a',
+          700: '#a9500b',
+        },
+        bg: "var(--color-bg)",
+        text: "var(--color-text)",
+        hint: "var(--color-hint)",
+        link: "var(--color-link)",
+        button: "var(--color-button)",
+        buttonText: "var(--color-button-text)",
+        secondaryBg: "var(--color-secondary-bg)",
       }
     },
   },
