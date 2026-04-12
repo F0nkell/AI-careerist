@@ -4,23 +4,22 @@
 
 @layer base {
   :root {
-    --color-bg: var(--tg-theme-bg-color, #ffffff);
-    --color-text: var(--tg-theme-text-color, #1f2937);
-    --color-hint: var(--tg-theme-hint-color, #9ca3af);
-    --color-secondary-bg: var(--tg-theme-secondary-bg-color, #f3f4f6);
-    --color-button: var(--tg-theme-button-color, #ea910f);
-    --color-button-text: var(--tg-theme-button-text-color, #ffffff);
-    --color-link: var(--tg-theme-link-color, #ea910f);
+    --color-bg: #ffffff;
+    --color-text: #050505;
+    --color-hint: #9ca3af;
+    --color-secondary-bg: #f4f4f5;
+    --color-button: #ea910f;
+    --color-button-text: #ffffff;
+    --color-link: #ea910f;
   }
 
-  /* Manual dark mode overrides Telegram defaults if activated explicitly */
   .dark {
-    --color-bg: #121212;
-    --color-text: #f3f4f6;
-    --color-hint: #6b7280;
-    --color-secondary-bg: #1e1e1e;
+    --color-bg: #000000;
+    --color-text: #ffffff;
+    --color-hint: #71717a;
+    --color-secondary-bg: #111113;
     --color-button: #ea910f;
-    --color-button-text: #121212;
+    --color-button-text: #000000;
     --color-link: #ea910f;
   }
 }

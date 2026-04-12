@@ -149,10 +149,10 @@ export const Interview = () => {
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div 
               className={`
-                max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm
+                max-w-[80%] p-3 rounded-2xl text-[15px] font-medium leading-relaxed shadow-sm
                 ${msg.role === 'user' 
-                  ? 'bg-blue-500 text-white rounded-br-none' 
-                  : 'bg-secondaryBg text-text rounded-bl-none'}
+                  ? 'bg-gradient-to-tr from-gold-500 to-gold-400 text-white rounded-br-none shadow-gold-500/20' 
+                  : 'bg-secondaryBg text-text border border-black/5 dark:border-white/5 rounded-bl-none'}
               `}
             >
               {/* Отображение картинки в сообщении */}
@@ -160,11 +160,11 @@ export const Interview = () => {
                 <img 
                   src={msg.image} 
                   alt="User upload" 
-                  className="mb-2 rounded-lg max-h-40 w-full object-cover border border-white/20"
+                  className="mb-2 rounded-xl max-h-40 w-full object-cover border border-white/20 shadow-sm"
                 />
               )}
               
-              {msg.role === 'ai' && <Volume2 size={14} className="mb-1 opacity-50" />}
+              {msg.role === 'ai' && <Volume2 size={14} className="mb-1.5 opacity-40" />}
               {msg.text}
             </div>
           </div>
@@ -192,10 +192,10 @@ export const Interview = () => {
             className="px-6 pb-2"
           >
             <div className="relative inline-block">
-              <img src={imagePreview} alt="Preview" className="h-20 rounded-xl border-2 border-blue-500 shadow-lg" />
+              <img src={imagePreview} alt="Preview" className="h-20 rounded-xl border-2 border-gold-500 shadow-lg shadow-gold-500/20" />
               <button 
                 onClick={clearImage} 
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
               >
                 <X size={14} />
               </button>
@@ -210,7 +210,7 @@ export const Interview = () => {
         {/* Кнопка скрепки (Слева) */}
         <button 
           onClick={() => fileInputRef.current?.click()}
-          className="p-3 bg-secondaryBg rounded-full text-hint hover:text-blue-500 transition-colors shadow-sm active:scale-95"
+          className="p-3 bg-secondaryBg rounded-full text-hint hover:text-gold-500 transition-colors shadow-sm active:scale-95 border border-black/5 dark:border-white/5"
           disabled={isProcessing || isRecording}
         >
           <Paperclip size={24} />
@@ -244,8 +244,8 @@ export const Interview = () => {
 
           <div 
             className={`
-              relative z-10 w-20 h-20 rounded-full flex items-center justify-center shadow-xl transition-all duration-200
-              ${isRecording ? 'bg-red-500 scale-110' : 'bg-button hover:bg-blue-600'}
+              relative z-10 w-20 h-20 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200
+              ${isRecording ? 'bg-red-500 scale-110 shadow-red-500/40' : 'bg-gradient-to-tr from-gold-600 to-gold-400 shadow-gold-500/30 hover:shadow-gold-500/50'}
               ${isProcessing ? 'opacity-50 cursor-not-allowed grayscale' : ''}
             `}
           >
