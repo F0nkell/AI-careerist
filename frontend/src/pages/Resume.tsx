@@ -142,7 +142,7 @@ export const Resume = () => {
             
             {result.ai_response && (
               <div className="bg-bg p-4 rounded-xl border border-hint/10 shadow-inner mt-4 relative">
-                <p className="text-xs text-hint mb-2 text-left font-mono border-b border-hint/10 pb-2">>_ Senior_Review.log</p>
+                <p className="text-xs text-hint mb-2 text-left font-mono border-b border-hint/10 pb-2">&gt;_ Senior_Review.log</p>
                 <div className="font-mono text-text">
                   <Typewriter text={result.ai_response} speed={10} />
                 </div>
