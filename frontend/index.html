@@ -13,32 +13,164 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Bidvol SSP Ad Tag -->
-<div id="bidvol-ad-f5c96e30-9040-42ce-8da1-c4a877eda3ea"></div>
+<div id="bidvol-ad-da141a02-6003-454e-b616-1d54e5596de4" data-bidvol-zone="da141a02-6003-454e-b616-1d54e5596de4"></div>
 <script>
-!async function(){
-  try {
-    var d = document;
-    var w = window;
-    var storage = w.localStorage;
-    var key = "bdvl_cid";
-    var cid = storage.getItem(key);
+(function() {
+  var zoneId = "da141a02-6003-454e-b616-1d54e5596de4";
+  var baseUrl = "https://s.bidvol.com";
+  var containerId = "bidvol-ad-" + zoneId;
+  var clientStorageKey = "bdvl_cid";
+  var debug = window.BIDVOL_DEBUG === true || window.location.search.indexOf("bidvol_debug=1") !== -1;
 
-    if (!cid) {
-      cid = w.crypto && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2) + Date.now().toString(36);
-      storage.setItem(key, cid);
+  function log() {
+    if (!debug || !window.console) {
+      return;
     }
-
-    var url = "http://s.bidvol.com/v1/serve/f5c96e30-9040-42ce-8da1-c4a877eda3ea?cid=" + cid + "&sw=" + w.screen.width + "&sh=" + w.screen.height;
-    var response = await fetch(url);
-    if (response.ok) {
-      d.getElementById("bidvol-ad-f5c96e30-9040-42ce-8da1-c4a877eda3ea").innerHTML = await response.text();
-    }
-  } catch (error) {
-    console.error("Bidvol tag error:", error);
+    console.log.apply(console, ["[Bidvol]"].concat(Array.prototype.slice.call(arguments)));
   }
-}();
+
+  function createId() {
+    if (window.crypto && window.crypto.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function getClientId() {
+    try {
+      var stored = window.localStorage.getItem(clientStorageKey);
+      if (stored) {
+        return stored;
+      }
+      var nextId = createId();
+      window.localStorage.setItem(clientStorageKey, nextId);
+      return nextId;
+    } catch (error) {
+      return createId();
+    }
+  }
+
+  function buildContext(clientId) {
+    var timezone = "";
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch (error) {}
+
+    return {
+      client_id: clientId,
+      page_url: window.location.href,
+      referrer: document.referrer || "",
+      screen_width: window.screen ? window.screen.width : null,
+      screen_height: window.screen ? window.screen.height : null,
+      viewport_width: window.innerWidth || document.documentElement.clientWidth || null,
+      viewport_height: window.innerHeight || document.documentElement.clientHeight || null,
+      language: navigator.language || "",
+      timezone: timezone,
+      user_agent: navigator.userAgent || ""
+    };
+  }
+
+  function renderAd(container, html) {
+    container.innerHTML = html;
+
+    Array.prototype.slice.call(container.querySelectorAll("script")).forEach(function(oldScript) {
+      var nextScript = document.createElement("script");
+      Array.prototype.slice.call(oldScript.attributes).forEach(function(attr) {
+        nextScript.setAttribute(attr.name, attr.value);
+      });
+      nextScript.text = oldScript.text || oldScript.textContent || "";
+      oldScript.parentNode.replaceChild(nextScript, oldScript);
+    });
+  }
+
+  function sendImpression(context, requestId, bidId, ratio) {
+    var payload = Object.assign({}, context, {
+      zone_id: zoneId,
+      request_id: requestId || "",
+      bid_id: bidId || "",
+      visible_ratio: ratio || 0
+    });
+    var body = JSON.stringify(payload);
+    var url = baseUrl + "/v1/events/impression";
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body,
+      credentials: "omit",
+      keepalive: true
+    }).then(function(response) {
+      log("impression event", response.status, requestId);
+    }).catch(function(error) {
+      log("impression error", error);
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+      }
+    });
+  }
+
+  function observeImpression(container, context, requestId, bidId) {
+    if (!("IntersectionObserver" in window)) {
+      sendImpression(context, requestId, bidId, 1);
+      return;
+    }
+
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          sendImpression(context, requestId, bidId, entry.intersectionRatio);
+          observer.disconnect();
+        }
+      });
+    }, { threshold: [0.5] });
+
+    observer.observe(container);
+  }
+
+  async function loadAd() {
+    var container = document.getElementById(containerId);
+    if (!container) {
+      return;
+    }
+
+    var clientId = getClientId();
+    var context = buildContext(clientId);
+    log("request", zoneId, context);
+
+    try {
+      var response = await fetch(baseUrl + "/v1/serve/" + zoneId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(context),
+        credentials: "omit"
+      });
+
+      var html = await response.text();
+      if (!response.ok || !html) {
+        log("empty response", response.status);
+        return;
+      }
+
+      log("fill", response.status, response.headers.get("X-Bidvol-Request-Id"));
+      renderAd(container, html);
+      observeImpression(
+        container,
+        context,
+        response.headers.get("X-Bidvol-Request-Id"),
+        response.headers.get("X-Bidvol-Bid-Id")
+      );
+    } catch (error) {
+      console.error("Bidvol tag error:", error);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadAd);
+  } else {
+    loadAd();
+  }
+})();
 </script>
+<!-- End Bidvol SSP Ad Tag -->
   </body>
 </html>
