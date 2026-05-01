@@ -12,5 +12,33 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Bidvol SSP Ad Tag -->
+<div id="bidvol-ad-f5c96e30-9040-42ce-8da1-c4a877eda3ea"></div>
+<script>
+!async function(){
+  try {
+    var d = document;
+    var w = window;
+    var storage = w.localStorage;
+    var key = "bdvl_cid";
+    var cid = storage.getItem(key);
+
+    if (!cid) {
+      cid = w.crypto && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      storage.setItem(key, cid);
+    }
+
+    var url = "http://s.bidvol.com/v1/serve/f5c96e30-9040-42ce-8da1-c4a877eda3ea?cid=" + cid + "&sw=" + w.screen.width + "&sh=" + w.screen.height;
+    var response = await fetch(url);
+    if (response.ok) {
+      d.getElementById("bidvol-ad-f5c96e30-9040-42ce-8da1-c4a877eda3ea").innerHTML = await response.text();
+    }
+  } catch (error) {
+    console.error("Bidvol tag error:", error);
+  }
+}();
+</script>
   </body>
 </html>
