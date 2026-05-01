@@ -13,10 +13,10 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Bidvol SSP Ad Tag -->
-<div id="bidvol-ad-da141a02-6003-454e-b616-1d54e5596de4" data-bidvol-zone="da141a02-6003-454e-b616-1d54e5596de4"></div>
+<div id="bidvol-ad-c11eadfe-2f99-4f63-adbb-2375542c70e5" data-bidvol-zone="c11eadfe-2f99-4f63-adbb-2375542c70e5"></div>
 <script>
 (function() {
-  var zoneId = "da141a02-6003-454e-b616-1d54e5596de4";
+  var zoneId = "c11eadfe-2f99-4f63-adbb-2375542c70e5";
   var baseUrl = "https://s.bidvol.com";
   var containerId = "bidvol-ad-" + zoneId;
   var clientStorageKey = "bdvl_cid";
@@ -109,6 +109,45 @@
     });
   }
 
+  function sendClick(context, requestId, bidId, targetUrl) {
+    var payload = Object.assign({}, context, {
+      zone_id: zoneId,
+      request_id: requestId || "",
+      bid_id: bidId || "",
+      target_url: targetUrl || ""
+    });
+    var body = JSON.stringify(payload);
+    var url = baseUrl + "/v1/events/click";
+
+    if (navigator.sendBeacon) {
+      var sent = navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+      if (sent) {
+        log("click event", requestId, targetUrl);
+        return;
+      }
+    }
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body,
+      credentials: "omit",
+      keepalive: true
+    }).then(function(response) {
+      log("click event", response.status, requestId);
+    }).catch(function(error) {
+      log("click error", error);
+    });
+  }
+
+  function observeClicks(container, context, requestId, bidId) {
+    container.addEventListener("click", function(event) {
+      var target = event.target;
+      var link = target && target.closest ? target.closest("a") : null;
+      sendClick(context, requestId, bidId, link ? link.href : "");
+    }, true);
+  }
+
   function observeImpression(container, context, requestId, bidId) {
     if (!("IntersectionObserver" in window)) {
       sendImpression(context, requestId, bidId, 1);
@@ -153,6 +192,12 @@
 
       log("fill", response.status, response.headers.get("X-Bidvol-Request-Id"));
       renderAd(container, html);
+      observeClicks(
+        container,
+        context,
+        response.headers.get("X-Bidvol-Request-Id"),
+        response.headers.get("X-Bidvol-Bid-Id")
+      );
       observeImpression(
         container,
         context,
