@@ -2,31 +2,28 @@ import os
 import base64
 import uuid
 import json
-import asyncio
 import re
-import random
-from typing import List, Optional
+from typing import Optional
 from pathlib import Path
 from fastapi import UploadFile
 from openai import AsyncOpenAI
-import speech_recognition as sr
-from pydub import AudioSegment
 import edge_tts 
 from sqlalchemy import select, func
 
 from src.config import settings
 from src.database import AsyncSessionLocal
 from src.models.question import Question
+from src.services.transcription import transcribe_audio_file
 
 # --- НАСТРОЙКИ (Адаптировано под VseGPT) ---
 # Вставь точный ID модели с VseGPT (например, google/gemini-2.5-flash-lite)
-MODEL_NAME = "google/gemini-2.5-flash-lite" 
-VOICE_NAME = "ru-RU-DmitryNeural" # Строгий мужской голос
+MODEL_NAME = settings.interview_chat_model
+VOICE_NAME = settings.INTERVIEW_TTS_VOICE # Строгий мужской голос
 
 # Клиент VseGPT
 client = AsyncOpenAI(
-    api_key=settings.OPENROUTER_API_KEY, # Используем старое имя переменной, но ключ VseGPT
-    base_url="https://api.vsegpt.ru/v1"
+    api_key=settings.vsegpt_api_key,
+    base_url=settings.vsegpt_base_url
 )
 
 TEMP_DIR = Path("temp_audio")
@@ -88,7 +85,6 @@ async def get_rag_context(user_text: str) -> str:
 async def process_voice_interview(file: UploadFile, history_json: str, image: Optional[UploadFile] = None) -> dict:
     unique_id = uuid.uuid4().hex
     input_path = TEMP_DIR / f"{unique_id}.webm"
-    wav_path = TEMP_DIR / f"{unique_id}.wav"
     output_path = TEMP_DIR / f"{unique_id}_output.mp3"
 
     try:
@@ -105,33 +101,17 @@ async def process_voice_interview(file: UploadFile, history_json: str, image: Op
         with open(input_path, "wb") as f:
             f.write(content)
 
-        # 2. Конвертация в WAV (для Google SR)
-        try:
-            sound = AudioSegment.from_file(input_path)
-            sound.export(wav_path, format="wav")
-        except Exception as e:
-            print(f"FFmpeg Error: {e}")
-            return {"user_text": "Ошибка", "ai_text": "Проблема с аудиофайлом.", "audio_base64": ""}
-
-        # 3. Распознавание речи (Google Free)
-        print("DEBUG: Sending audio to Google Speech...")
-        r = sr.Recognizer()
-        with sr.AudioFile(str(wav_path)) as source:
-            r.adjust_for_ambient_noise(source, duration=0.5)
-            audio_data = r.record(source)
-            try:
-                user_text = await asyncio.to_thread(r.recognize_google, audio_data, language="ru-RU")
-            except sr.UnknownValueError:
-                user_text = "..."
-            except sr.RequestError:
-                user_text = "(Ошибка сервиса Google)"
+        # 2. Распознавание речи через VseGPT STT
+        print("DEBUG: Sending audio to VseGPT STT...")
+        transcription = await transcribe_audio_file(input_path)
+        user_text = transcription.transcript or "..."
         
         print(f"DEBUG: User said: {user_text}")
 
         # 4. Сборка контекста (RAG + Промпт)
         system_instruction = load_system_prompt()
         
-        if user_text and user_text != "..." and user_text != "(Ошибка сервиса Google)":
+        if user_text and user_text != "...":
             rag_context = await get_rag_context(user_text) 
             full_system = system_instruction + rag_context
         else:
@@ -191,7 +171,7 @@ async def process_voice_interview(file: UploadFile, history_json: str, image: Op
         return {"user_text": "Error", "ai_text": f"Ошибка: {str(e)}", "audio_base64": ""}
 
     finally:
-        for p in [input_path, wav_path, output_path]:
+        for p in [input_path, output_path]:
             if p.exists(): 
                 try: os.remove(p)
                 except: pass

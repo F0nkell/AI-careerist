@@ -1,5 +1,4 @@
 import io
-import asyncio
 import re
 from fastapi import UploadFile
 from openai import AsyncOpenAI
@@ -9,11 +8,11 @@ from src.config import settings
 
 # --- НАСТРОЙКИ ---
 # Используем быструю и дешевую модель (можно поменять на google/gemini-2.5-flash-lite как в интервью)
-MODEL_NAME = "openai/gpt-4o-mini" 
+MODEL_NAME = settings.OPENROUTER_CHAT_MODEL
 
 client = AsyncOpenAI(
-    api_key=settings.OPENROUTER_API_KEY, 
-    base_url="https://api.vsegpt.ru/v1"
+    api_key=settings.vsegpt_api_key,
+    base_url=settings.vsegpt_base_url
 )
 
 SYSTEM_PROMPT = """

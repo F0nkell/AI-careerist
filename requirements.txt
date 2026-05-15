@@ -11,6 +11,5 @@ python-multipart
 aiofiles
 openai             # Для VseGPT
 edge-tts           # Качественный голос
-SpeechRecognition  # Слух
 pydub              # Конвертация аудио
 pypdf              # Чтение PDF
