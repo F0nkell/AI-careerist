@@ -46,20 +46,37 @@ async def set_bot_commands(bot_instance: Bot):
     ]
     await bot_instance.set_my_commands(commands)
 
+async def run_bot_polling(bot_instance: Bot) -> None:
+    try:
+        logger.info("Bot startup: setting commands...")
+        try:
+            await asyncio.wait_for(set_bot_commands(bot_instance), timeout=10)
+        except Exception:
+            logger.exception("Bot command setup failed; web API will continue.")
+
+        logger.info("Bot startup: starting polling...")
+        await dp.start_polling(bot_instance)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Bot polling stopped; web API will continue without Telegram bot.")
+
 # --- FASTAPI LIFESPAN ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Startup: Setting up bot...")
-    await set_bot_commands(bot)
-    polling_task = asyncio.create_task(dp.start_polling(bot))
-    yield
-    logger.info("Shutdown: Stopping bot...")
-    polling_task.cancel()
+    logger.info("Startup: Starting API and Telegram bot task...")
+    polling_task = asyncio.create_task(run_bot_polling(bot))
     try:
-        await polling_task
-    except asyncio.exceptions.CancelledError:
-        pass
-    await bot.session.close()
+        yield
+    finally:
+        logger.info("Shutdown: Stopping bot...")
+        if not polling_task.done():
+            polling_task.cancel()
+            try:
+                await polling_task
+            except asyncio.exceptions.CancelledError:
+                pass
+        await bot.session.close()
 
 # --- FASTAPI SETUP ---
 app = FastAPI(
@@ -86,7 +103,10 @@ async def health_check():
 
 @app.get("/bot_status")
 async def bot_status():
-    me = await bot.get_me()
+    try:
+        me = await bot.get_me()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Telegram bot is unavailable") from exc
     return {"status": "ok", "bot": me.username}
 
 @app.get("/me")
