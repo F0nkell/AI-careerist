@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any
 
 from src.config import settings
@@ -12,12 +13,14 @@ EVALUATION_SYSTEM_PROMPT = """
 Верни только валидный JSON без markdown и пояснений вокруг.
 
 Правила:
-- Если ответ не по теме вопроса, не оценивай по ощущениям.
+- Если кандидат явно говорит "не знаю", "не помню", "затрудняюсь", не возвращай его к вопросу: coverage_percent=0, should_redirect=false.
+- Если ответ содержит термины из вопроса и пытается отвечать по теме, считай его on_topic=true даже при ошибках.
+- Если ответ по теме, но слабый или неполный, оцени coverage_percent по весам key_points.
+- Если coverage_percent < 60 и redirect_attempts < max_redirects, можно set should_redirect=true и задать короткую направляющую реплику.
 - Если ответ не по теме и redirect_attempts < max_redirects, попроси вернуться к тому же вопросу.
-- Если ответ не по теме после max_redirects, поставь coverage_percent=0.
-- Если ответ частично по теме, оцени coverage_percent только по весам key_points.
-- Не раскрывай полный expected_answer в обратной связи.
-- Обратная связь должна быть прямой, короткой и полезной.
+- Если ответ не по теме после max_redirects, поставь coverage_percent=0 и should_redirect=false.
+- Не раскрывай полный expected_answer и список missing_points в final_feedback_to_user.
+- final_feedback_to_user и redirect_message должны звучать как живой интервьюер на русском языке.
 """.strip()
 
 
@@ -43,6 +46,47 @@ DEFAULT_EVALUATION: dict[str, Any] = {
     "final_feedback_to_user": "",
     "score_reason": "",
 }
+
+UNKNOWN_ANSWER_PATTERNS = (
+    r"\bне\s+знаю\b",
+    r"\bне\s+помню\b",
+    r"\bне\s+могу\s+ответить\b",
+    r"\bзатрудняюсь\b",
+    r"\bбез\s+понятия\b",
+    r"\bне\s+сталкивался\b",
+)
+
+
+def is_unknown_answer(transcript: str) -> bool:
+    normalized = transcript.lower()
+    return any(re.search(pattern, normalized) for pattern in UNKNOWN_ANSWER_PATTERNS)
+
+
+def has_question_overlap(question: InterviewQuestion, transcript: str) -> bool:
+    normalized = transcript.lower()
+    source = " ".join(
+        [
+            question.question_text,
+            " ".join(public_key_point_titles(question)),
+            question.competency,
+        ]
+    ).lower()
+    terms = set(re.findall(r"[a-zA-Z_]{3,}|[а-яА-ЯёЁ]{5,}", source))
+    stop_terms = {
+        "какой",
+        "какая",
+        "какие",
+        "когда",
+        "почему",
+        "зачем",
+        "можно",
+        "нужно",
+        "ответ",
+        "вопрос",
+        "понимание",
+    }
+    meaningful_terms = [term for term in terms if term not in stop_terms]
+    return any(term in normalized for term in meaningful_terms[:24])
 
 
 def public_key_point_titles(question: InterviewQuestion) -> list[str]:
@@ -110,11 +154,31 @@ def clamp_percent(value: object) -> int:
 def normalize_evaluation(
     raw_evaluation: dict[str, Any],
     question: InterviewQuestion,
+    transcript: str,
     redirect_attempts: int,
 ) -> dict[str, Any]:
     normalized = DEFAULT_EVALUATION | raw_evaluation
     normalized["on_topic"] = bool(normalized.get("on_topic"))
     normalized["coverage_percent"] = clamp_percent(normalized.get("coverage_percent"))
+
+    if is_unknown_answer(transcript):
+        normalized["on_topic"] = True
+        normalized["coverage_percent"] = 0
+        normalized["covered_points"] = []
+        normalized["missing_points"] = public_key_point_titles(question)
+        normalized["red_flags_seen"] = []
+        normalized["should_redirect"] = False
+        normalized["redirect_message"] = ""
+        normalized["should_follow_up"] = False
+        normalized["follow_up_question"] = ""
+        normalized["final_feedback_to_user"] = "Ок, зафиксировал. Не будем застревать на этом вопросе, перейдем дальше."
+        normalized["score_reason"] = "Кандидат явно сообщил, что не знает ответ."
+        return normalized
+
+    if not normalized["on_topic"] and has_question_overlap(question, transcript):
+        normalized["on_topic"] = True
+        if normalized["coverage_percent"] == 0:
+            normalized["coverage_percent"] = 20
 
     if not normalized["on_topic"]:
         normalized["coverage_percent"] = 0
@@ -136,10 +200,17 @@ def normalize_evaluation(
             )
         return normalized
 
+    if normalized["coverage_percent"] < 60 and redirect_attempts < settings.INTERVIEW_MAX_REDIRECTS:
+        normalized["should_redirect"] = True
+        if not normalized.get("redirect_message"):
+            normalized["redirect_message"] = "Вы в теме, но ответ пока слишком неполный. Попробуйте раскрыть ключевые отличия и привести практический пример."
+        normalized["final_feedback_to_user"] = normalized["redirect_message"]
+        return normalized
+
     normalized["should_redirect"] = False
     normalized["redirect_message"] = ""
     if not normalized.get("final_feedback_to_user"):
-        normalized["final_feedback_to_user"] = "Ответ принят. Продолжайте держать фокус на ключевых технических деталях."
+        normalized["final_feedback_to_user"] = "Ответ принят, идем дальше."
     return normalized
 
 
@@ -180,7 +251,7 @@ async def evaluate_answer(
         payload,
         settings.INTERVIEW_EVALUATION_MAX_TOKENS,
     )
-    return normalize_evaluation(raw_evaluation, question, redirect_attempts)
+    return normalize_evaluation(raw_evaluation, question, transcript, redirect_attempts)
 
 
 def deterministic_report(evaluations: list[dict[str, Any]]) -> dict[str, Any]:
